@@ -1,42 +1,50 @@
 # goproxy
-GoProxy is a ReverseProxy / LoadBalancer helper for Golang
 
-# Example
+goproxy is a Reverse Proxy written in Go that can be used to communicate with database before routing request to backend inspired by proxy_machine
+
+# Example: 
+
+In this example, I am making an upload server. Say I have a backend server at ``localhost:8080`` (call it upstream) and by using ``Proxy_pass``, I am redirecting the request to ``localhost:8080``. 
+
+In an actual application, you might have a database that stores the file location with its corresponding ``host`` info, all you have to do is use that ``host`` as parameter to ``Proxy_pass`` and you are done. 
+
+This project aims to solve some features that nginx does not have like retrieving information from database. Using Go, we can have a similar performance without losing the ability to communicate with our database. Database communication is the only advantage a custom reverse proxy has over nginx. In fact, the upstream server uses nginx.
 
 ```go
 package main
 
 import (
-	"fmt"
-	"log"
+	"goproxy/proxy"
 	"net/http"
-
-	"github.com/creack/goproxy"
-	"github.com/creack/goproxy/registry"
+	"os"
+	"log"
+	"github.com/unrolled/render"
 )
 
-// ServiceRegistry is a local registry of services/versions
-var ServiceRegistry = registry.DefaultRegistry{
-	"service1": {
-		"v1": {
-			"localhost:9091",
-			"localhost:9092",
-		},
-	},
-}
+var (
+
+	r = render.New()
+)
 
 func main() {
-	http.HandleFunc("/", goproxy.NewMultipleHostReverseProxy(ServiceRegistry))
-	http.HandleFunc("/health", func(w http.ResponseWriter, req *http.Request) {
-		fmt.Fprintf(w, "%v\n", ServiceRegistry)
+	// http.HandleFunc("/", goproxy.NewMultipleHostReverseProxy(ServiceRegistry))
+	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+
+		if req.URL.String() == "/upload" {
+			err := goproxy.Proxy_pass("http", "localhost:8080", w, req)
+			if err != nil {
+				r.JSON(w, http.StatusUnauthorized, map[string]string{"message": "please use /upload for upload"})
+				log.Println(err)
+			}
+		} else {
+
+			r.JSON(w, http.StatusUnauthorized, map[string]string{"message": "please use /upload for upload"})
+
+		}
+	
 	})
-	println("ready")
-	log.Fatal(http.ListenAndServe(":9090", nil))
+
+	http.ListenAndServe(":"+os.Getenv("PORT"), nil)
 }
+
 ```
-
-# Limitations
-
-Because we control only the connection, we can't have different http routes accross the same service.
-For the same reason, we can't have both HTTP and HTTPS for the same service.
-For now, this load balancer only supports HTTP.
